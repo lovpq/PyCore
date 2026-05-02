@@ -23,49 +23,38 @@ namespace Core
     /// </summary>
     public class ComputerInteraction : MonoBehaviour
     {
-        /// <summary>
-        /// вызывается Unity при запуске скрипта
-        /// подписывается на событие взаимодействия
-        /// </summary>
+        private SimplePythonUI pythonUI;
+        private Interactable interactable;
+
         private void Start()
         {
-            // получаем компонент Interactable на этом же объекте
-            Interactable interactable = GetComponent<Interactable>();
-            // если компонент найден
+            pythonUI = FindFirstObjectByType<SimplePythonUI>();
+            if (pythonUI == null)
+                Debug.LogWarning("ComputerInteraction: SimplePythonUI not found in scene!");
+
+            interactable = GetComponent<Interactable>();
             if (interactable != null)
-            {
-                // подписываемся на событие OnInteract
-                // AddListener добавляет функцию OpenTaskWindow к списку вызываемых функций
-                // когда игрок нажмет E рядом с компьютером, вызовется OpenTaskWindow
                 interactable.OnInteract.AddListener(OpenTaskWindow);
-            }
+            else
+                Debug.LogWarning($"ComputerInteraction: Interactable not found on {gameObject.name}!");
         }
 
-        /// <summary>
-        /// вызывается при взаимодействии с компьютером (нажатие E)
-        /// открывает панель задач на Python
-        /// </summary>
+        private void OnDestroy()
+        {
+            if (interactable != null)
+                interactable.OnInteract.RemoveListener(OpenTaskWindow);
+        }
+
+        /// <summary>Открывает панель задач. Вызывается через OnInteract.</summary>
         private void OpenTaskWindow()
         {
-            // выводим сообщение в консоль для отладки
-            Debug.Log("ComputerInteraction: OpenTaskWindow called!");
-            
-            // ищем SimplePythonUI в сцене
-            // FindFirstObjectByType находит первый объект указанного типа
-            SimplePythonUI pythonUI = FindFirstObjectByType<SimplePythonUI>();
-            // если UI панель найдена
+            if (pythonUI == null)
+                pythonUI = FindFirstObjectByType<SimplePythonUI>();
+
             if (pythonUI != null)
-            {
-                // выводим подтверждение в консоль
-                Debug.Log("ComputerInteraction: SimplePythonUI found, opening task system...");
-                // открываем систему задач (панель с заданиями на Python)
                 pythonUI.OpenTaskSystem();
-            }
             else
-            {
-                // если UI панель не найдена, выводим предупреждение
                 Debug.LogWarning("ComputerInteraction: SimplePythonUI not found in scene!");
-            }
         }
     }
 }

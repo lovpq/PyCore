@@ -14,9 +14,7 @@ public class SimpleComputerInteraction : MonoBehaviour
     {
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if (player != null)
-        {
             playerTransform = player.transform;
-        }
 
         pythonUI = FindFirstObjectByType<SimplePythonUI>();
     }
@@ -24,14 +22,17 @@ public class SimpleComputerInteraction : MonoBehaviour
     private void Update()
     {
         if (playerTransform == null) return;
+
+        // Откладываем поиск SimplePythonUI только один раз
         if (pythonUI == null)
         {
             pythonUI = FindFirstObjectByType<SimplePythonUI>();
             return;
         }
 
-        // Не обрабатываем взаимодействие, если панель уже открыта
+        // Не открываем задачи, если уже открыта любая UI-панель
         if (pythonUI.IsPanelOpen) return;
+        if (Core.NeedsManager.Instance != null && Core.NeedsManager.Instance.IsAnyPanelOpen()) return;
 
         float distance = Vector3.Distance(transform.position, playerTransform.position);
         canInteract = distance <= interactionDistance;
@@ -39,11 +40,8 @@ public class SimpleComputerInteraction : MonoBehaviour
         if (!canInteract) return;
 
         bool ePressed = Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame;
-        
         if (ePressed)
-        {
             pythonUI.OpenTaskSystem();
-        }
     }
 
     private void OnDrawGizmosSelected()

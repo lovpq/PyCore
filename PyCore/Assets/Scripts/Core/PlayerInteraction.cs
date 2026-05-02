@@ -27,8 +27,19 @@ namespace Core
             }
             else
             {
+                Debug.LogWarning("PlayerInteraction: PlayerInput не найден. Используется fallback биндинг <Keyboard>/e. Добавьте PlayerInput и настройте Input Actions.");
                 interactAction = new InputAction("Interact", binding: "<Keyboard>/e");
                 interactAction.Enable();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // Освобождаем InputAction только если создавали его сами (без PlayerInput)
+            if (interactAction != null && GetComponent<UnityEngine.InputSystem.PlayerInput>() == null)
+            {
+                interactAction.Disable();
+                interactAction.Dispose();
             }
         }
 
@@ -62,12 +73,20 @@ namespace Core
                 Interactable interactable = hit.collider.GetComponent<Interactable>();
                 if (interactable != null)
                 {
-                    currentInteractable = interactable;
+                    if (currentInteractable != interactable)
+                    {
+                        currentInteractable = interactable;
+                        InteractionUIManager.Instance?.SetInteractionPrompt(interactable);
+                    }
                     return;
                 }
             }
 
-            currentInteractable = null;
+            if (currentInteractable != null)
+            {
+                currentInteractable = null;
+                InteractionUIManager.Instance?.SetInteractionPrompt(null);
+            }
         }
 
         private void OnDrawGizmos()

@@ -64,56 +64,28 @@ namespace Core
         /// вызывается Unity каждый кадр
         /// проверяет расстояние до игрока и управляет визуальными эффектами
         /// </summary>
-        // Счётчик для поиска игрока не каждый кадр
-        private int findPlayerCooldown = 0;
+        private const float FIND_PLAYER_INTERVAL = 0.5f;
+        private float nextFindPlayerTime = 0f;
 
         private void Update()
         {
-            // если ссылка на игрока еще не получена
             if (playerTransform == null)
             {
-                // Ищем игрока не каждый кадр, а раз в 30 кадров
-                if (findPlayerCooldown > 0)
-                {
-                    findPlayerCooldown--;
-                    return;
-                }
-                findPlayerCooldown = 30;
-                
+                if (Time.time < nextFindPlayerTime) return;
+                nextFindPlayerTime = Time.time + FIND_PLAYER_INTERVAL;
+
                 GameObject player = GameObject.FindGameObjectWithTag("Player");
                 if (player != null)
-                {
                     playerTransform = player.transform;
-                }
                 return;
             }
 
-            // вычисляем расстояние между объектом и игроком
             float distance = Vector3.Distance(transform.position, playerTransform.position);
-            // сохраняем предыдущее состояние (был ли игрок рядом в прошлом кадре)
             bool wasNearby = isPlayerNearby;
-            // обновляем флаг: игрок рядом, если расстояние меньше или равно interactionDistance
             isPlayerNearby = distance <= interactionDistance;
 
-            // если состояние изменилось (игрок вошел в зону или вышел)
-            if (isPlayerNearby != wasNearby)
-            {
-                // если есть компонент обводки
-                if (outlineEffect != null)
-                {
-                    // включаем/выключаем обводку в зависимости от близости игрока
-                    outlineEffect.SetOutlineEnabled(isPlayerNearby);
-                }
-
-                // если существует менеджер UI взаимодействия
-                if (InteractionUIManager.Instance != null)
-                {
-                    // показываем/скрываем подсказку "Нажмите E"
-                    // передаем this (этот объект), если игрок рядом, или null, если далеко
-                    // тернарный оператор: условие ? значение_если_true : значение_если_false
-                    InteractionUIManager.Instance.SetInteractionPrompt(isPlayerNearby ? this : null);
-                }
-            }
+            if (isPlayerNearby != wasNearby && outlineEffect != null)
+                outlineEffect.SetOutlineEnabled(isPlayerNearby);
         }
 
         /// <summary>

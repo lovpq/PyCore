@@ -15,7 +15,7 @@ namespace Core
 
         private const string KEY_PREFIX = "pycore_";
         private const float AUTOSAVE_INTERVAL = 30f;
-        private float autosaveTimer = 0f;
+        private bool saveOnDestroy = true;
 
         private void Awake()
         {
@@ -23,20 +23,17 @@ namespace Core
             else { Destroy(gameObject); }
         }
 
-        private void Update()
+        private void Start()
         {
-            autosaveTimer += Time.deltaTime;
-            if (autosaveTimer >= AUTOSAVE_INTERVAL)
-            {
-                autosaveTimer = 0f;
-                SaveGame();
-            }
+            InvokeRepeating(nameof(AutoSave), AUTOSAVE_INTERVAL, AUTOSAVE_INTERVAL);
         }
+
+        private void AutoSave() => SaveGame();
 
         // Сохраняем при сворачивании и выходе
         private void OnApplicationPause(bool pause) { if (pause) SaveGame(); }
         private void OnApplicationQuit() { SaveGame(); }
-        private void OnDestroy() { if (Instance == this) SaveGame(); }
+        private void OnDestroy() { if (Instance == this && saveOnDestroy) SaveGame(); }
 
         // === СОХРАНЕНИЕ ===
 
@@ -118,7 +115,26 @@ namespace Core
 
         public void DeleteSave()
         {
-            PlayerPrefs.DeleteAll();
+            saveOnDestroy = false;
+            CancelInvoke(nameof(AutoSave));
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "has_save");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "level");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "experience");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "money");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "hunger");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "health");
+            PlayerPrefs.DeleteKey(KEY_PREFIX + "location");
+
+            if (TaskManager.Instance != null)
+            {
+                var tasks = TaskManager.Instance.GetTasks();
+                for (int i = 0; i < tasks.Count; i++)
+                {
+                    PlayerPrefs.DeleteKey(KEY_PREFIX + "task_done_" + i);
+                    PlayerPrefs.DeleteKey(KEY_PREFIX + "task_code_" + i);
+                }
+            }
+
             PlayerPrefs.Save();
             Debug.Log("SaveManager: Сохранение удалено");
         }

@@ -1,11 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Controls;
 using TMPro;
 using System;
-using Keyboard = UnityEngine.InputSystem.Keyboard;
-using Mouse = UnityEngine.InputSystem.Mouse;
 
 namespace Core
 {
@@ -57,9 +53,9 @@ namespace Core
         [SerializeField] private TMP_Text shopBalanceText;
         [SerializeField] private Button closeShopButton;
 
-        // 6 кнопок "Купить" для 6 товаров
-        [Header("Shop Items (6)")]
-        [SerializeField] private Button[] shopBuyButtons = new Button[6];
+        // 4 кнопок "Купить" для 4 товаров
+        [Header("Shop Items (4)")]
+        [SerializeField] private Button[] shopBuyButtons = new Button[4];
 
         // === СОН ===
         [Header("Sleep")]
@@ -76,23 +72,21 @@ namespace Core
         // === НАСТРОЙКИ ===
         [Header("Settings")]
         [SerializeField] private float hungerDrainPerMinute = 3f;
-        [SerializeField] private float sleepCooldownMinutes = 10f; // реальных минут
+        [SerializeField] private float sleepCooldownMinutes = 5f; // реальных минут (было 10 — слишком долго)
 
-        // 6 товаров: [цена, очки насыщения]
+        // 4 товара: [цена, очки насыщения] — по количеству кнопок в ShopPanel
         private readonly int[,] shopItems = {
             { 15, 10 },   // Хлеб
             { 25, 20 },   // Лапша
             { 40, 30 },   // Бутерброд
             { 60, 45 },   // Суп
-            { 80, 60 },   // Пицца
-            { 120, 90 },  // Обед
         };
 
         private PlayerData data;
         private float hungerTimer = 0f;
         private float lastSleepTime = -999f; // время последнего сна
         private float warningTimer = 0f;
-        private EasyPeasyFirstPersonController.FirstPersonController fpsController;
+        private bool isDead = false; // флаг смерти — предотвращает повторный штраф до возрождения
 
         private void Awake()
         {
@@ -105,10 +99,6 @@ namespace Core
             Debug.Log("NeedsManager: Start called");
             data = GameManager.Instance != null ? GameManager.Instance.playerData : new PlayerData();
             lastSleepTime = Time.time;
-            
-            // Найти FirstPersonController в сцене
-            fpsController = FindFirstObjectByType<EasyPeasyFirstPersonController.FirstPersonController>();
-            Debug.Log($"NeedsManager: FPS Controller found: {fpsController != null}");
 
             // Кнопки HUD
             if (infoButton != null)
@@ -136,7 +126,7 @@ namespace Core
 
             // Магазин
             if (closeShopButton != null) closeShopButton.onClick.AddListener(CloseShopPanel);
-            for (int i = 0; i < shopBuyButtons.Length && i < 6; i++)
+            for (int i = 0; i < shopBuyButtons.Length && i < 4; i++)
             {
                 int idx = i;
                 if (shopBuyButtons[i] != null)
@@ -152,21 +142,12 @@ namespace Core
             if (shopPanel != null) shopPanel.SetActive(false);
             if (sleepPanel != null) sleepPanel.SetActive(false);
             if (warningPanel != null) warningPanel.SetActive(false);
-
-            // Загружаем сохранение
-            if (SaveManager.Instance != null && SaveManager.Instance.HasSave())
-                SaveManager.Instance.LoadGame();
+            // Загрузку сохранения делает только LocationManager.Start() — не дублируем здесь
         }
 
         private void Update()
         {
             if (data == null) return;
-
-            // ТЕСТ: проверяем клики мыши
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            {
-                Debug.Log($"NeedsManager: Mouse click! Cursor state = {Cursor.lockState}, visible = {Cursor.visible}");
-            }
 
             // Голод падает со временем
             hungerTimer += Time.deltaTime;
@@ -176,15 +157,16 @@ namespace Core
                 data.hunger = Mathf.Max(0f, data.hunger - hungerDrainPerMinute);
             }
 
-            // Голод = 0 → смерть (game over)
+            // Голод = 0 → смерть (game over), флаг защищает от повторного штрафа
             if (data.hunger <= 0f)
             {
                 data.hunger = 0f;
-                OnPlayerDeath();
+                if (!isDead) OnPlayerDeath();
             }
+            // isDead сбрасывается только в DoSleep/BuyFood после реального восстановления голода
 
-            // Предупреждение при низком голоде
-            if (data.hunger <= 15f && data.hunger > 0f)
+            // Предупреждение при низком голоде (только если нет активного предупреждения)
+            if (data.hunger <= 15f && data.hunger > 0f && warningTimer <= 0f)
             {
                 ShowWarning("⚠ Ты голодаешь! Купи еду в магазине!");
             }
@@ -257,25 +239,26 @@ namespace Core
         public void OpenSleepPanel()
         {
             if (sleepPanel != null) sleepPanel.SetActive(true);
-            DisablePlayerControls();
+            InputSystemHelper.Instance?.EnableUIMode();
         }
 
         private void DoSleep()
         {
             if (!CanSleep()) return;
 
-            // Восстанавливаем голод на 25 (бонус за сон)
-            data.hunger = Mathf.Min(100f, data.hunger + 25f);
+            // Восстанавливаем голод на 40 (было 25 — недостаточно при кулдауне 5 мин)
+            data.hunger = Mathf.Min(100f, data.hunger + 40f);
+            isDead = false; // игрок реально восстановился — следующая смерть разрешена
             lastSleepTime = Time.time;
 
-            Debug.Log("NeedsManager: Поспал! Голод +25");
+            Debug.Log("NeedsManager: Поспал! Голод +40");
             CloseSleepPanel();
         }
 
         private void CloseSleepPanel()
         {
             if (sleepPanel != null) sleepPanel.SetActive(false);
-            EnablePlayerControls();
+            InputSystemHelper.Instance?.EnableGameplayInput();
         }
 
         // === МАГАЗИН ===
@@ -286,12 +269,12 @@ namespace Core
             Debug.Log("NeedsManager: OpenShopPanel called!");
             if (shopPanel != null) shopPanel.SetActive(true);
             UpdateShopUI();
-            DisablePlayerControls();
+            InputSystemHelper.Instance?.EnableUIMode();
         }
 
         private void BuyFood(int itemIndex)
         {
-            if (itemIndex < 0 || itemIndex >= 6) return;
+            if (itemIndex < 0 || itemIndex >= 4) return;
 
             int cost = shopItems[itemIndex, 0];
             int saturation = shopItems[itemIndex, 1];
@@ -304,6 +287,7 @@ namespace Core
 
             data.money -= cost;
             data.hunger = Mathf.Min(100f, data.hunger + saturation);
+            isDead = false; // игрок поел — следующая смерть разрешена
             Debug.Log($"NeedsManager: Купил еду #{itemIndex + 1} за ${cost}, насыщение +{saturation}");
             UpdateShopUI();
         }
@@ -316,51 +300,30 @@ namespace Core
         private void CloseShopPanel()
         {
             if (shopPanel != null) shopPanel.SetActive(false);
-            EnablePlayerControls();
+            InputSystemHelper.Instance?.EnableGameplayInput();
         }
 
         // === ИНФОРМАЦИЯ ===
-
-        private void EnablePlayerControls()
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-            if (fpsController != null)
-            {
-                fpsController.SetLookControl(true);
-                fpsController.SetMoveControl(true);
-            }
-        }
-
-        private void DisablePlayerControls()
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-            if (fpsController != null)
-            {
-                fpsController.SetLookControl(false);
-                fpsController.SetMoveControl(false);
-            }
-        }
 
         private void OpenInfoPanel()
         {
             Debug.Log("NeedsManager: OpenInfoPanel called!");
             if (infoPanel != null) infoPanel.SetActive(true);
-            DisablePlayerControls();
+            InputSystemHelper.Instance?.EnableUIMode();
         }
 
         private void CloseInfoPanel()
         {
             Debug.Log("NeedsManager: CloseInfoPanel called!");
             if (infoPanel != null) infoPanel.SetActive(false);
-            EnablePlayerControls();
+            InputSystemHelper.Instance?.EnableGameplayInput();
         }
 
         // === СМЕРТЬ ===
 
         private void OnPlayerDeath()
         {
+            isDead = true;
             ShowWarning("Ты умер от голода! Прогресс потерян.");
 
             // Сбрасываем голод, отнимаем деньги
@@ -368,6 +331,7 @@ namespace Core
             data.money = Mathf.Max(0, data.money - 50);
 
             Debug.Log("NeedsManager: Игрок умер от голода!");
+            // isDead сбросится в Update, когда голод снова упадёт до 0
         }
 
         // === УТИЛИТЫ ===

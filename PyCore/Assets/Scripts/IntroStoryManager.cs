@@ -2,6 +2,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Collections;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 /// <summary>
 /// управляет вступительной историей игры (интро)
@@ -194,16 +197,38 @@ public class IntroStoryManager : MonoBehaviour
     /// <summary>
     /// вызывается Unity каждый кадр
     /// проверяет, нажал ли игрок клавишу для пропуска интро
+    /// поддерживает оба Input System: Legacy и новый (com.unity.inputsystem)
     /// </summary>
     void Update()
     {
-        // если игрок нажал Space, Enter или левую кнопку мыши
-        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetMouseButtonDown(0))
+        if (ShouldSkip())
         {
-            // останавливаем все корутины (останавливает воспроизведение истории)
             StopAllCoroutines();
-            // сразу переходим к следующей сцене
             LoadNextScene();
         }
+    }
+
+    /// <summary>
+    /// возвращает true если игрок нажал Space, Enter или левую кнопку мыши
+    /// работает с Legacy Input Manager и с новым Input System одновременно
+    /// </summary>
+    private bool ShouldSkip()
+    {
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        var mouse = Mouse.current;
+
+        if (keyboard != null && (keyboard.spaceKey.wasPressedThisFrame || keyboard.enterKey.wasPressedThisFrame))
+            return true;
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            return true;
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetMouseButtonDown(0))
+            return true;
+#endif
+
+        return false;
     }
 }

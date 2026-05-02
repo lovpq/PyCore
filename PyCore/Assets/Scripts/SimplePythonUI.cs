@@ -2,7 +2,6 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
-using EasyPeasyFirstPersonController;
 
 /// <summary>
 /// UI система для решения задач на Python.
@@ -53,10 +52,9 @@ public class SimplePythonUI : MonoBehaviour
 
     private PythonExecutor pythonExecutor;
     private int currentTaskIndex = -1;
-    private int viewingLocationIndex = 0; // какую локацию смотрим сейчас
+    private int viewingLocationIndex = 0;
     private string lastOutput = "";
-    private FirstPersonController playerController;
-    private UnityEngine.InputSystem.PlayerInput playerInput;
+    private string accumulatedOutput = "";
     private const string INDENT = "    ";
 
     private void Awake()
@@ -65,13 +63,6 @@ public class SimplePythonUI : MonoBehaviour
         pythonExecutor.OnOutputReceived += OnPythonOutput;
         pythonExecutor.OnErrorReceived += OnPythonError;
         pythonExecutor.OnExecutionCompleted += OnPythonCompleted;
-
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
-        {
-            playerController = player.GetComponent<FirstPersonController>();
-            playerInput = player.GetComponent<UnityEngine.InputSystem.PlayerInput>();
-        }
 
         if (closeListButton != null) closeListButton.onClick.AddListener(CloseTaskSystem);
         if (runCodeButton != null) runCodeButton.onClick.AddListener(RunCode);
@@ -89,6 +80,8 @@ public class SimplePythonUI : MonoBehaviour
             codeInputField.navigation = nav;
         }
     }
+
+    private void Start() { }  // playerController поиск убран — управление через InputSystemHelper
 
     private void Update()
     {
@@ -161,24 +154,12 @@ public class SimplePythonUI : MonoBehaviour
 
     private void EnableUIMode()
     {
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-        if (playerController != null)
-        {
-            playerController.SetLookControl(false);
-            playerController.SetMoveControl(false);
-        }
+        Core.InputSystemHelper.Instance?.EnableUIMode();
     }
 
     private void DisableUIMode()
     {
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-        if (playerController != null)
-        {
-            playerController.SetLookControl(true);
-            playerController.SetMoveControl(true);
-        }
+        Core.InputSystemHelper.Instance?.EnableGameplayInput();
     }
 
     // === ВКЛАДКИ ЛОКАЦИЙ ===
@@ -299,9 +280,6 @@ public class SimplePythonUI : MonoBehaviour
         if (taskListPanel != null) taskListPanel.SetActive(false);
         if (taskSolverPanel != null) taskSolverPanel.SetActive(true);
 
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
         if (taskTitleText != null) taskTitleText.text = task.taskTitle;
         if (taskDescriptionText != null) taskDescriptionText.text = task.taskDescription;
         if (taskExampleText != null) taskExampleText.text = $"Пример:\n{task.taskExample}";
@@ -322,9 +300,6 @@ public class SimplePythonUI : MonoBehaviour
 
         if (taskSolverPanel != null) taskSolverPanel.SetActive(false);
         if (taskListPanel != null) taskListPanel.SetActive(true);
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
 
         RefreshLocationTabs();
         RefreshTaskList();
@@ -361,6 +336,7 @@ public class SimplePythonUI : MonoBehaviour
         AppendOutput("========================================", normalColor);
 
         lastOutput = "";
+        accumulatedOutput = "";
         pythonExecutor.ExecutePythonCode(codeInputField.text);
     }
 
@@ -368,7 +344,9 @@ public class SimplePythonUI : MonoBehaviour
 
     private void OnPythonOutput(string output)
     {
-        lastOutput = output;
+        // Накапливаем весь вывод — lastOutput не перезаписываем, а дополняем
+        accumulatedOutput += (accumulatedOutput.Length > 0 ? "\n" : "") + output;
+        lastOutput = accumulatedOutput;
         AppendOutput(output, normalColor);
     }
 
@@ -429,58 +407,69 @@ public class SimplePythonUI : MonoBehaviour
 
     private void HandleCodeEditorInput(UnityEngine.InputSystem.Keyboard keyboard)
     {
+        // Tab вставляем вместо нативного поведения поля
         if (keyboard.tabKey.wasPressedThisFrame)
         {
             InsertTextAtCaret(INDENT);
-            codeInputField.ActivateInputField();
-            codeInputField.Select();
+            // Не передаём Tab дальше в TMP_InputField
         }
 
+        // Автоиндент срабатывает на следующий кадр — к тому моменту TMP уже вставил \n
         if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
-            HandleAutoIndent();
+            StartCoroutine(AutoIndentNextFrame());
     }
 
     private void InsertTextAtCaret(string textToInsert)
     {
         if (codeInputField == null) return;
-        string text = codeInputField.text;
-        int pos = codeInputField.caretPosition;
-        codeInputField.text = text.Insert(pos, textToInsert);
-        codeInputField.caretPosition = pos + textToInsert.Length;
-        codeInputField.selectionAnchorPosition = codeInputField.caretPosition;
-        codeInputField.selectionFocusPosition = codeInputField.caretPosition;
+
+        int pos = Mathf.Clamp(codeInputField.caretPosition, 0, codeInputField.text.Length);
+        codeInputField.text = codeInputField.text.Insert(pos, textToInsert);
+
+        int newPos = pos + textToInsert.Length;
+        codeInputField.caretPosition = newPos;
+        codeInputField.selectionAnchorPosition = newPos;
+        codeInputField.selectionFocusPosition = newPos;
+        codeInputField.ForceLabelUpdate();
     }
 
-    private void HandleAutoIndent()
+    /// <summary>
+    /// Определяет отступ предыдущей строки после того, как TMP уже вставил символ \n.
+    /// </summary>
+    private IEnumerator AutoIndentNextFrame()
     {
-        if (codeInputField == null) return;
+        yield return null; // ждём, пока TMP добавит \n
+
+        if (codeInputField == null) yield break;
 
         string text = codeInputField.text;
-        int pos = codeInputField.caretPosition;
+        int pos = Mathf.Clamp(codeInputField.caretPosition, 0, text.Length);
 
-        int lineStart = text.LastIndexOf('\n', Mathf.Max(0, pos - 1));
-        lineStart = (lineStart < 0) ? 0 : lineStart + 1;
+        // Ищем начало ПРЕДЫДУЩЕЙ строки (до текущей каретки)
+        int prevNewline = text.LastIndexOf('\n', Mathf.Max(0, pos - 2));
+        int prevLineStart = (prevNewline < 0) ? 0 : prevNewline + 1;
 
-        string currentLine = text.Substring(lineStart, pos - lineStart);
+        // Конец предыдущей строки — это символ \n прямо перед кареткой
+        int prevLineEnd = pos - 1; // позиция \n
 
+        if (prevLineEnd <= prevLineStart) yield break;
+
+        string prevLine = text.Substring(prevLineStart, prevLineEnd - prevLineStart);
+
+        // Собираем базовый отступ из пробелов в начале строки
         string indent = "";
-        foreach (char c in currentLine)
+        foreach (char c in prevLine)
         {
             if (c == ' ') indent += ' ';
             else break;
         }
 
-        if (currentLine.TrimEnd().EndsWith(":"))
+        // Если строка заканчивалась на ':', добавляем дополнительный уровень отступа
+        if (prevLine.TrimEnd().EndsWith(":"))
             indent += INDENT;
 
         if (indent.Length > 0)
-            StartCoroutine(InsertIndentNextFrame(indent));
-    }
-
-    private IEnumerator InsertIndentNextFrame(string indent)
-    {
-        yield return null;
-        InsertTextAtCaret(indent);
+            InsertTextAtCaret(indent);
     }
 
     // === ВЫВОД ===
@@ -489,6 +478,7 @@ public class SimplePythonUI : MonoBehaviour
     {
         if (outputText != null) outputText.text = "";
         lastOutput = "";
+        accumulatedOutput = "";
     }
 
     private void AppendOutput(string text, Color color)

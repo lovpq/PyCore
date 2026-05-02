@@ -17,33 +17,25 @@ public class BasementManager : MonoBehaviour
     public GameObject bed;
     public GameObject lightBulb;
 
-    private PlayerData playerData;
-    private float updateTimer = 0f;
-
-    void Start()
+    private void Start()
     {
-        playerData = GameManager.Instance != null
-            ? GameManager.Instance.playerData : new PlayerData();
+        Refresh();
+    }
+
+    /// <summary>Обновляет видимость объектов комнаты. Вызывайте после загрузки сохранения или покупки.</summary>
+    public void Refresh()
+    {
         UpdateRoomObjects();
     }
 
-    void Update()
+    private void UpdateRoomObjects()
     {
-        // Обновляем объекты раз в секунду
-        updateTimer += Time.deltaTime;
-        if (updateTimer >= 1f)
-        {
-            updateTimer = 0f;
-            UpdateRoomObjects();
-        }
-    }
-
-    void UpdateRoomObjects()
-    {
-        if (playerData == null) return;
-        if (computer != null) computer.SetActive(playerData.hasComputer);
-        if (desk != null) desk.SetActive(playerData.hasDesk);
-        if (bed != null) bed.SetActive(playerData.hasBed);
-        if (lightBulb != null) lightBulb.SetActive(playerData.hasLight);
+        // Получаем актуальные данные напрямую, чтобы не держать устаревшую ссылку
+        PlayerData data = GameManager.Instance != null ? GameManager.Instance.playerData : null;
+        if (data == null) return;
+        if (computer != null) computer.SetActive(data.hasComputer);
+        if (desk != null) desk.SetActive(data.hasDesk);
+        if (bed != null) bed.SetActive(data.hasBed);
+        if (lightBulb != null) lightBulb.SetActive(data.hasLight);
     }
 }

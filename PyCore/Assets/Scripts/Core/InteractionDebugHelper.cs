@@ -80,7 +80,7 @@ namespace Core
             if (!Application.isPlaying) return;
 
             // находим все объекты Interactable в сцене
-            Interactable[] interactables = FindObjectsOfType<Interactable>();
+            Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
 
             // проходим по каждому взаимодействуемому объекту
             foreach (var interactable in interactables)
@@ -162,7 +162,7 @@ namespace Core
         private void FindAllInteractables()
         {
             // находим все Interactable в сцене
-            Interactable[] interactables = FindObjectsOfType<Interactable>();
+            Interactable[] interactables = FindObjectsByType<Interactable>(FindObjectsSortMode.None);
             // выводим заголовок
             Debug.Log($"=== НАЙДЕНО {interactables.Length} ИНТЕРАКТИВНЫХ ОБЪЕКТОВ ===\n");
 
@@ -218,21 +218,17 @@ namespace Core
         {
             Debug.Log("=== ПРОВЕРКА UI МЕНЕДЖЕРОВ ===\n");
 
-            // проверяем наличие менеджеров
-            InteractionUIManager interactionUI = FindObjectOfType<InteractionUIManager>();
+            InteractionUIManager interactionUI = FindFirstObjectByType<InteractionUIManager>();
             Debug.Log($"InteractionUIManager: {(interactionUI != null ? "✓" : "✗")}");
 
-            TaskUIManager taskUI = FindObjectOfType<TaskUIManager>();
-            Debug.Log($"TaskUIManager: {(taskUI != null ? "✓" : "✗")}");
-
-            TaskManager taskManager = FindObjectOfType<TaskManager>();
+            TaskManager taskManager = FindFirstObjectByType<TaskManager>();
             Debug.Log($"TaskManager: {(taskManager != null ? "✓" : "✗")}");
 
-            // если TaskManager найден, показываем количество задач
             if (taskManager != null)
-            {
                 Debug.Log($"Задач загружено: {taskManager.GetTasks().Count}");
-            }
+
+            SimplePythonUI pythonUI = FindFirstObjectByType<SimplePythonUI>();
+            Debug.Log($"SimplePythonUI: {(pythonUI != null ? "✓" : "✗")}");
         }
     }
 }

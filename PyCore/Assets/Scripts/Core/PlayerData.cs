@@ -35,12 +35,6 @@ public class PlayerData
     public float health = 100f;
     // уровень голода (0 до 100, меньше = голоднее)
     public float hunger = 100f;
-    // энергия игрока (0 до 100, влияет на способность работать)
-    public float energy = 100f;
-    
-    // === НАВЫКИ ===
-    // навык программирования на Python (увеличивается с выполнением задач)
-    public int pythonSkill = 0;
     
     // === ЛОКАЦИЯ ===
     // текущая локация игрока (название сцены)
@@ -64,15 +58,13 @@ public class PlayerData
     {
         level = 1;
         experience = 0;
-        money = 0;
+        money = 50;
         health = 100f;
-        hunger = 70f;     // начинаем с 70%
-        energy = 100f;
-        pythonSkill = 0;
+        hunger = 80f;
         currentLocation = "Basement";
         hasComputer = true;
         hasDesk = true;
-        hasBed = true;    // кровать уже есть
+        hasBed = true;
         hasLight = true;
     }
 

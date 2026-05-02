@@ -6,7 +6,6 @@ namespace Core
     {
         [Header("Outline Settings")]
         [SerializeField] private Color outlineColor = Color.white;
-        [SerializeField] private float outlineWidth = 0.03f;
 
         private Material[][] originalMaterials;
         private Material[][] outlineMaterials;

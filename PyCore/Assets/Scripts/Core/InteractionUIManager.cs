@@ -48,60 +48,65 @@ namespace Core
         private Interactable currentInteractable;
         // ссылка на главную камеру (для конвертации координат)
         private Camera mainCamera;
+        // RectTransform подсказки и корневого Canvas для правильного пересчёта координат
+        private RectTransform promptRect;
+        private RectTransform canvasRect;
 
-        /// <summary>
-        /// вызывается Unity при создании объекта
-        /// настраивает Singleton и скрывает подсказку
-        /// </summary>
         private void Awake()
         {
-            // проверяем, существует ли уже InteractionUIManager
             if (Instance == null)
-            {
-                // если это первый экземпляр, сохраняем его
                 Instance = this;
-            }
             else
             {
-                // если уже есть другой менеджер, уничтожаем этот
                 Destroy(gameObject);
+                return;
             }
 
-            // получаем ссылку на главную камеру
-            // Camera.main ищет камеру с тегом "MainCamera"
             mainCamera = Camera.main;
-            
-            // скрываем подсказку при запуске
+
             if (interactionPrompt != null)
             {
+                promptRect = interactionPrompt.GetComponent<RectTransform>();
+                Canvas rootCanvas = interactionPrompt.GetComponentInParent<Canvas>();
+                if (rootCanvas != null)
+                    canvasRect = rootCanvas.GetComponent<RectTransform>();
+
                 interactionPrompt.SetActive(false);
             }
         }
 
-        /// <summary>
-        /// вызывается Unity каждый кадр
-        /// обновляет позицию подсказки над объектом
-        /// </summary>
         private void Update()
         {
-            // Переполучаем камеру если ссылка протухла (например после смены сцены)
             if (mainCamera == null)
                 mainCamera = Camera.main;
 
-            if (currentInteractable != null && interactionPrompt != null && mainCamera != null)
+            if (currentInteractable == null || interactionPrompt == null || mainCamera == null)
+                return;
+
+            Vector3 screenPos = mainCamera.WorldToScreenPoint(currentInteractable.transform.position);
+            if (screenPos.z <= 0) return;
+
+            if (promptRect != null && canvasRect != null)
             {
-                // конвертируем 3D позицию объекта в 2D координаты экрана
-                // WorldToScreenPoint возвращает позицию на экране (X,Y в пикселях, Z - расстояние)
-                Vector3 screenPos = mainCamera.WorldToScreenPoint(currentInteractable.transform.position);
-                
-                // проверяем, что объект перед камерой (z > 0)
-                // если z < 0, объект позади камеры
-                if (screenPos.z > 0)
+                // Смещение 100 пикселей вверх в screen space
+                Vector2 offsetScreenPos = new Vector2(screenPos.x, screenPos.y + 100f);
+
+                // Определяем камеру для overlay canvas
+                Canvas rootCanvas = promptRect.GetComponentInParent<Canvas>();
+                Camera uiCamera = (rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                    ? rootCanvas.worldCamera
+                    : null;
+
+                if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    canvasRect, offsetScreenPos, uiCamera, out Vector2 localPoint))
                 {
-                    // устанавливаем позицию подсказки
-                    // + new Vector3(0, 100, 0) поднимает подсказку на 100 пикселей вверх
-                    interactionPrompt.transform.position = screenPos + new Vector3(0, 100, 0);
+                    promptRect.localPosition = localPoint;
                 }
+            }
+            else
+            {
+                // Фоллбэк для случаев без RectTransform
+                interactionPrompt.transform.position = screenPos + new Vector3(0f, 100f, 0f);
             }
         }
 

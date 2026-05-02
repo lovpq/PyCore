@@ -1,105 +1,90 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using EasyPeasyFirstPersonController;
 
 namespace Core
 {
     /// <summary>
-    /// помощник для управления Input System
-    /// 
-    /// что делает этот скрипт:
-    /// - Включает/выключает управление игроком
-    /// - Управляет курсором (блокировка/разблокировка, видимость)
-    /// - Опционально останавливает время при открытии UI
-    /// - Помогает переключаться между режимами игры и UI
-    /// 
-    /// как использовать в unity:
-    /// 1. Добавьте этот скрипт на объект игрока или в сцену
-    /// 2. Назначьте PlayerInput компонент в Inspector
-    /// 3. Вызывайте EnableGameplayInput() когда игрок должен управлять персонажем
-    /// 4. Вызывайте DisableGameplayInput() когда открыто меню или UI
-    /// 
-    /// как работает:
-    /// - PlayerInput.ActivateInput() включает ввод (движение, прыжки и т.д.)
-    /// - Cursor.lockState управляет блокировкой курсора
-    /// - Time.timeScale = 0 останавливает игру (если pauseOnTaskWindow = true)
+    /// Централизованное управление вводом, курсором и Time.timeScale.
+    /// Синглтон. Все системы (NeedsManager, LocationManager, SimplePythonUI)
+    /// переключают режим только через этот класс.
+    ///
+    /// EnableGameplayInput()   — игровой режим: курсор скрыт, время идёт.
+    /// EnableUIMode()          — UI без паузы: курсор видим, время идёт (магазин, сон).
+    /// EnableUIModeWithPause() — UI с паузой: курсор видим, Time.timeScale = 0 (модалки).
+    ///
+    /// ВАЖНО: НЕ используем DeactivateInput() — он отключает InputSystemUIInputModule
+    /// и ломает клики кнопок. Вместо этого отключаем FPS контроллер напрямую.
     /// </summary>
     public class InputSystemHelper : MonoBehaviour
     {
-        [Header("Input Settings")]
-        // ссылка на компонент PlayerInput (управляет вводом игрока)
+        public static InputSystemHelper Instance { get; private set; }
+
         [SerializeField] private PlayerInput playerInput;
-        // нужно ли ставить игру на паузу при открытии окна задач
-        [SerializeField] private bool pauseOnTaskWindow = true;
 
-        /// <summary>
-        /// вызывается Unity при запуске скрипта
-        /// находит PlayerInput если не назначен
-        /// </summary>
-        private void Start()
+        private FirstPersonController fpsController;
+
+        private void Awake()
         {
-            // если PlayerInput не назначен в Inspector
-            if (playerInput == null)
+            if (Instance == null)
             {
-                // пытаемся найти его на этом же объекте
-                playerInput = GetComponent<PlayerInput>();
+                Instance = this;
+            }
+            else
+            {
+                Destroy(gameObject);
+                return;
             }
 
-           // если все еще не найден
             if (playerInput == null)
-            {
-                // выводим предупреждение
-                Debug.LogWarning("PlayerInput component not found. Input System may not work correctly.");
-            }
+                playerInput = GetComponent<PlayerInput>();
         }
 
-        /// <summary>
-        /// включает управление игроком (игровой режим)
-        /// вызывается при закрытии меню или UI панелей
-        /// </summary>
+        private void Start()
+        {
+            fpsController = FindFirstObjectByType<FirstPersonController>();
+
+            if (playerInput == null)
+                Debug.LogWarning("InputSystemHelper: PlayerInput не назначен и не найден на объекте.");
+
+            if (fpsController == null)
+                Debug.LogWarning("InputSystemHelper: FirstPersonController не найден в сцене.");
+        }
+
+        /// <summary>Игровой режим: курсор заблокирован, время идёт, ввод активен.</summary>
         public void EnableGameplayInput()
         {
-            // если PlayerInput существует
-            if (playerInput != null)
-            {
-                // активируем ввод (игрок может двигаться, прыгать и т.д.)
-                playerInput.ActivateInput();
-            }
-            
-            // блокируем курсор в центре экрана (для FPS камеры)
-            // Locked = курсор невидим и закреплен в центре
+            SetFPSControls(true);
             Cursor.lockState = CursorLockMode.Locked;
-            // делаем курсор невидимым
             Cursor.visible = false;
-            // восстанавливаем нормальную скорость времени (игра не на паузе)
             Time.timeScale = 1f;
         }
 
-        /// <summary>
-        /// отключает управление игроком (режим UI)
-        /// вызывается при открытии меню или окна задач
-        /// </summary>
-        public void DisableGameplayInput()
+        /// <summary>UI-режим без паузы времени (магазин, панель сна, инфо).</summary>
+        public void EnableUIMode()
         {
-            // если PlayerInput существует И нужна пауза
-            if (playerInput != null && pauseOnTaskWindow)
-            {
-                // деактивируем ввод (игрок не может двигаться)
-                playerInput.DeactivateInput();
-            }
-            
-            // разблокируем курсор (можно двигать мышью)
-            // None = курсор свободно двигается
+            // Не вызываем DeactivateInput() — это убивает обработку кликов мышью в UI.
+            // Вместо этого просто отключаем FPS контроллер (взгляд + движение).
+            SetFPSControls(false);
             Cursor.lockState = CursorLockMode.None;
-            // делаем курсор видимым
             Cursor.visible = true;
-            
-            // если нужна пауза при открытии окон
-            if (pauseOnTaskWindow)
-            {
-                // останавливаем время (Time.deltaTime станет 0)
-                // физика и большинство Update() остановятся
-                Time.timeScale = 0f;
-            }
+        }
+
+        /// <summary>UI-режим с паузой времени (модальные окна: телепорт, победа).</summary>
+        public void EnableUIModeWithPause()
+        {
+            EnableUIMode();
+            Time.timeScale = 0f;
+        }
+
+        /// <summary>Устаревший псевдоним — оставлен для совместимости.</summary>
+        public void DisableGameplayInput() => EnableUIMode();
+
+        private void SetFPSControls(bool enabled)
+        {
+            if (fpsController == null) return;
+            fpsController.SetLookControl(enabled);
+            fpsController.SetMoveControl(enabled);
         }
     }
 }

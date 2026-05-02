@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -41,6 +42,8 @@ namespace Core
         [Header("Victory UI")]
         [SerializeField] private GameObject victoryPanel;
         [SerializeField] private TMP_Text victoryText;
+        [SerializeField] private Button victoryRestartButton;   // кнопка "Играть снова" на экране победы
+        [SerializeField] private Button victoryMenuButton;       // кнопка "В меню" на экране победы
 
         private int currentLocationIndex = 0;
         private int pendingLocationIndex = -1; // куда телепортироваться
@@ -59,7 +62,16 @@ namespace Core
             if (teleportButton != null)
                 teleportButton.onClick.AddListener(OnTeleportButtonClicked);
 
-            // Загружаем сохранённую локацию
+            // Кнопки победного экрана
+            if (victoryRestartButton != null)
+                victoryRestartButton.onClick.AddListener(RestartGame);
+            if (victoryMenuButton != null)
+                victoryMenuButton.onClick.AddListener(ExitToMainMenu);
+
+            // Загружаем сохранение — делаем здесь, чтобы порядок был гарантирован
+            if (SaveManager.Instance != null && SaveManager.Instance.HasSave())
+                SaveManager.Instance.LoadGame();
+
             int savedLoc = SaveManager.Instance != null ? SaveManager.Instance.GetSavedLocation() : 0;
             InitializeLocations();
             if (savedLoc > 0) MoveToLocation(savedLoc);
@@ -74,7 +86,7 @@ namespace Core
             currentLocationIndex = 0;
 
             if (player != null && stock1SpawnPoint != null)
-                TeleportPlayer(stock1SpawnPoint);
+                StartCoroutine(TeleportNextFrame(stock1SpawnPoint));
         }
 
         /// <summary>Вызывается из TaskManager при завершении задачи</summary>
@@ -119,9 +131,7 @@ namespace Core
             }
 
             // Блокируем игру — отменить нельзя!
-            Time.timeScale = 0f;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            InputSystemHelper.Instance?.EnableUIModeWithPause();
 
             Debug.Log($"LocationManager: Показано окно телепорта в {nextName}");
         }
@@ -130,17 +140,14 @@ namespace Core
         {
             if (pendingLocationIndex < 0) return;
 
-            // Скрываем модальное окно
             if (teleportPanel != null) teleportPanel.SetActive(false);
 
-            // Переходим на новую локацию
+            // EnableGameplayInput ПЕРЕД MoveToLocation — восстанавливаем timeScale=1,
+            // чтобы WaitForFixedUpdate/yield return null в корутине телепорта не завис
+            InputSystemHelper.Instance?.EnableGameplayInput();
+
             MoveToLocation(pendingLocationIndex);
             pendingLocationIndex = -1;
-
-            // Возобновляем игру
-            Time.timeScale = 1f;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
         }
 
         // === ЛОКАЦИИ ===
@@ -154,24 +161,36 @@ namespace Core
             if (stock2 != null) stock2.SetActive(false);
             if (stock3 != null) stock3.SetActive(false);
 
-            // Включаем нужную
+            // Включаем нужную и телепортируем через корутину,
+            // чтобы физика успела зарегистрировать новые коллайдеры
             switch (locationIndex)
             {
                 case 0:
                     if (stock1 != null) stock1.SetActive(true);
-                    TeleportPlayer(stock1SpawnPoint);
+                    StartCoroutine(TeleportNextFrame(stock1SpawnPoint));
                     break;
                 case 1:
                     if (stock2 != null) stock2.SetActive(true);
-                    TeleportPlayer(stock2SpawnPoint);
+                    StartCoroutine(TeleportNextFrame(stock2SpawnPoint));
                     break;
                 case 2:
                     if (stock3 != null) stock3.SetActive(true);
-                    TeleportPlayer(stock3SpawnPoint);
+                    StartCoroutine(TeleportNextFrame(stock3SpawnPoint));
                     break;
             }
 
             Debug.Log($"LocationManager: Перешли на локацию {TaskManager.Instance?.GetLocationName(locationIndex)}");
+        }
+
+        /// <summary>
+        /// Ждёт физический кадр, чтобы коллайдеры включённой локации зарегистрировались,
+        /// и только потом телепортирует игрока. WaitForFixedUpdate не зависит от timeScale.
+        /// </summary>
+        private IEnumerator TeleportNextFrame(Transform destination)
+        {
+            yield return new WaitForFixedUpdate();
+            Physics.SyncTransforms();
+            TeleportPlayer(destination);
         }
 
         private void TeleportPlayer(Transform destination)
@@ -209,20 +228,24 @@ namespace Core
                     $"Теперь ты Python-разработчик!";
             }
 
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-            Time.timeScale = 0f;
+            InputSystemHelper.Instance?.EnableUIModeWithPause();
         }
 
         public void RestartGame()
         {
             Time.timeScale = 1f;
+            if (GameManager.Instance != null)
+                GameManager.Instance.StartNewGame();
+            if (SaveManager.Instance != null)
+                SaveManager.Instance.DeleteSave();
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
 
         public void ExitToMainMenu()
         {
             Time.timeScale = 1f;
+            if (SaveManager.Instance != null)
+                SaveManager.Instance.SaveGame();
             SceneManager.LoadScene("StartMenu");
         }
 
